@@ -41,6 +41,7 @@ raw_stream = spark.readStream \
     .option("kafka.bootstrap.servers", "localhost:9092") \
     .option("subscribe", "patient-vitals") \
     .option("startingOffsets", "latest") \
+    .option("failOnDataLoss", "false") \
     .load()
 
 # Process JSON
