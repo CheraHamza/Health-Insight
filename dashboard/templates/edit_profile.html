@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <a href="{{ url_for('patient_detail', patient_id=profile.patient_id) }}" class="text-emerald-600 hover:underline">
+    <i class="fas fa-arrow-left mr-1"></i> Back to Patient
+  </a>
+  <div class="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-500">
+    {{ profile.patient_id }}
+  </div>
+</div>
+
+<div class="max-w-3xl">
+  <div class="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-emerald-500">
+    <h1 class="text-2xl font-bold text-gray-800 mb-2">Edit Patient Profile</h1>
+    <p class="text-sm text-gray-500 mb-6">Update the patient’s profile stored in MongoDB.</p>
+
+    {% if error %}
+    <div class="mb-6 bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">
+      <i class="fas fa-triangle-exclamation mr-2"></i>
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post" class="space-y-5">
+      <div>
+        <label class="block text-xs font-bold text-gray-400 uppercase">Name</label>
+        <input name="name" value="{{ profile.name }}" required class="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-gray-400 uppercase">Email</label>
+          <input name="email" type="email" value="{{ profile.contact_info.email }}" class="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-400 uppercase">Phone</label>
+          <input name="phone" value="{{ profile.contact_info.phone }}" class="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-400 uppercase">Medical Notes</label>
+        <textarea name="medical_notes" rows="5" class="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-200">
+        {{ profile.medical_notes }}</textarea>
+      </div>
+
+      <div class="pt-2 flex items-center gap-3">
+        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 rounded-lg">
+          Save Changes
+        </button>
+        <a href="{{ url_for('patient_detail', patient_id=profile.patient_id) }}" class="text-gray-600 hover:underline">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const patientId = "{{ profile.patient_id }}";
+    const input = document.getElementById('risk-score');
+
+    async function refreshRisk() {
+      try {
+        const res = await fetch('/api/patients/risks', {
+          cache: 'no-store'
+        });
+        if (!res.ok) return;
+        const rows = await res.json();
+        if (!Array.isArray(rows)) return;
+        const row = rows.find(r => r.patient_id === patientId);
+        if (!row) return;
+        const score = Number(row.risk_score);
+        if (!Number.isFinite(score)) return;
+        if (input) input.value = score.toFixed(2);
+      } catch (e) {
+        // ignore transient errors
+      }
+    }
+
+    refreshRisk();
+    setInterval(refreshRisk, 10000);
+  });
+</script>
+{% endblock %}

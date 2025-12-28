@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HealthInsight Portal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-gray-50 font-sans leading-normal tracking-normal">
+  <nav class="bg-gradient-to-r from-green-700 to-emerald-600 p-4 shadow-lg">
+    <div class="container mx-auto flex justify-between items-center">
+      <a href="/" class="text-white text-2xl font-bold"><i class="fas fa-heartbeat mr-2"></i>HealthInsight</a>
+      <div class="flex items-center gap-4">
+        <a href="{{ url_for('daily_stats_page') }}" class="text-emerald-50 text-sm hover:underline">Daily stats</a>
+        <div class="text-emerald-50 text-sm">Real-time Health Monitoring System</div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mx-auto p-6">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+
+</html>

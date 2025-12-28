@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6 flex items-center gap-3">
+  <a href="{{ url_for('patient_detail', patient_id=profile.patient_id) }}" class="text-emerald-600 hover:underline text-sm"><i class="fas fa-arrow-left mr-1"></i> Back to patient</a>
+  <span class="text-gray-400 text-sm">/</span>
+  <span class="text-gray-700 text-sm capitalize">
+    {{ metric_name|replace('_', ' ') }}</span>
+</div>
+
+{% set normal_ranges = {
+  'heart_rate': {'min': 60, 'max': 100, 'desc': 'Heart rate'},
+  'bp_systolic': {'min': 110, 'max': 130, 'desc': 'Systolic blood pressure'},
+  'bp_diastolic': {'min': 70, 'max': 85, 'desc': 'Diastolic blood pressure'},
+  'spo2': {'min': 95, 'max': 100, 'desc': 'Oxygen level'},
+  'temperature': {'min': 36.5, 'max': 37.5, 'desc': 'Body temperature'},
+  'respiratory_rate': {'min': 12, 'max': 18, 'desc': 'Breathing rate'}
+} %}
+
+{% set range = normal_ranges.get(metric_name, {'min': None, 'max': None, 'desc': 'No reference range configured for this metric.'}) %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="lg:col-span-2 bg-white rounded-2xl shadow-lg p-6 border-t-4 border-emerald-500">
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900 capitalize">
+          {{ metric_name|replace('_', ' ') }}
+        </h1>
+        <p class="text-sm text-gray-600 mt-1">
+          {{ range.desc }}
+        </p>
+        {% if range.min is not none or range.max is not none %}
+        <p class="text-xs text-gray-500 mt-1">Normal range:
+          {% if range.min is not none and range.max is not none %}
+          {{ range.min }} -
+          {{ range.max }}
+          {% elif range.min is not none %}
+          ≥
+          {{ range.min }}
+          {% elif range.max is not none %}
+          ≤
+          {{ range.max }}
+          {% endif %}
+        </p>
+        {% endif %}
+      </div>
+      <div class="text-right text-xs text-gray-500">
+        <div class="font-semibold text-emerald-700">Unit</div>
+        {% if history and history[0].unit %}
+        <div>
+          {{ history[0].unit }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div id="history-list" class="space-y-2">
+      {% for v in history %}
+      {% set val = v.value|float %}
+      {% set status = 'normal' %}
+      {% if range.min is not none and val < range.min %}
+      {% set status = 'low' %}
+      {% elif range.max is not none and val > range.max %}
+      {% set status = 'high' %}
+      {% endif %}
+      {% set color = 'text-emerald-700' %}
+      {% if status == 'low' %}
+      {% set color = 'text-orange-500' %}
+      {% elif status == 'high' %}
+      {% set color = 'text-red-600' %}
+      {% endif %}
+      <div class="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 flex items-center justify-between">
+        <div class="flex items-baseline gap-2">
+          <span class="text-lg font-semibold {{ color }}">
+            {{ v.value }}</span>
+          <span class="text-xs text-gray-500">
+            {{ v.unit }}</span>
+        </div>
+        <div class="text-right">
+          <div class="text-xs text-gray-500">
+            {{ v.timestamp }}
+          </div>
+          {% if status != 'normal' %}
+          <div class="text-xs {% if status == 'high' %}text-red-600{% else %}text-orange-600{% endif %} flex items-center gap-1 justify-end">
+            <i class="fas fa-exclamation-triangle"></i>
+            {% if status == 'low' %}Below{% else %}Above{% endif %} normal
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="mt-4 flex items-center gap-3">
+      <button id="load-more" type="button" class="text-xs text-emerald-700 hover:text-emerald-900 font-semibold">Load more</button>
+      <span id="load-status" class="text-xs text-gray-500"></span>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+    <h2 class="text-lg font-bold text-gray-800 mb-3">Patient</h2>
+    <div class="space-y-2 text-sm text-gray-700">
+      <div class="font-semibold">
+        {{ profile.name }}
+      </div>
+      <div class="text-gray-500">
+        {{ profile.patient_id }}
+      </div>
+      <div class="text-gray-600">
+        {{ profile.contact_info.email }}
+      </div>
+      <div class="text-gray-600">
+        {{ profile.contact_info.phone }}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const patientId = "{{ profile.patient_id }}";
+    const metric = "{{ metric_name }}";
+    const normalRanges = {{ normal_ranges | tojson }};
+    const range = normalRanges[metric] || {
+      min: null,
+      max: null
+    };
+    const list = document.getElementById('history-list');
+    const loadMoreBtn = document.getElementById('load-more');
+    const statusEl = document.getElementById('load-status');
+    let currentLimit = Math.max(20, {{ history|length if history is not none else 0 }});
+
+    function statusForValue(value) {
+      if (range.min !== null && value < range.min) return 'low';
+      if (range.max !== null && value > range.max) return 'high';
+      return 'normal';
+    }
+
+    function colorForStatus(status) {
+      if (status === 'high') return 'text-red-600';
+      if (status === 'low') return 'text-orange-500';
+      return 'text-emerald-700';
+    }
+
+    function render(items) {
+      list.innerHTML = '';
+      items.forEach((v) => {
+        const valNum = parseFloat(v.value);
+        const status = statusForValue(valNum);
+        const color = colorForStatus(status);
+        const item = document.createElement('div');
+        item.className = 'bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 flex items-center justify-between';
+        const unitText = (v.unit ?? '');
+        const alertClass = (status === 'high') ? 'text-red-600' : 'text-orange-600';
+        const alertText = (status === 'low') ? 'Below' : 'Above';
+        const alertHtml = (status !== 'normal') ?
+          '<div class="text-xs ' + alertClass + ' flex items-center gap-1 justify-end">' +
+          '<i class="fas fa-exclamation-triangle"></i>' +
+          alertText + ' normal' +
+          '</div>' :
+          '';
+
+        item.innerHTML =
+          '<div class="flex items-baseline gap-2">' +
+          '<span class="text-lg font-semibold ' + color + '">' + v.value + '</span>' +
+          '<span class="text-xs text-gray-500">' + unitText + '</span>' +
+          '</div>' +
+          '<div class="text-right">' +
+          '<div class="text-xs text-gray-500">' + v.timestamp + '</div>' +
+          alertHtml +
+          '</div>';
+        list.appendChild(item);
+      });
+      statusEl.textContent = items.length === 0 ? 'No readings yet.' : `Showing ${items.length} readings`;
+    }
+
+    async function loadMore() {
+      const nextLimit = currentLimit + 20;
+      try {
+        const res = await fetch(`/api/patient/${patientId}/metric/${metric}?limit=${nextLimit}`);
+        const data = await res.json();
+        currentLimit = Math.min(nextLimit, data.length);
+        render(data);
+      } catch (err) {
+        statusEl.textContent = 'Failed to load more data';
+      }
+    }
+
+    async function refreshCurrent() {
+      try {
+        const res = await fetch(`/api/patient/${patientId}/metric/${metric}?limit=${currentLimit}`, {
+          cache: 'no-store'
+        });
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          render(data);
+        }
+      } catch (err) {
+        // ignore transient errors
+      }
+    }
+
+    loadMoreBtn.addEventListener('click', loadMore);
+
+    // Keep the metric view live.
+    refreshCurrent();
+    setInterval(refreshCurrent, 10000);
+  });
+</script>
+{% endblock %}

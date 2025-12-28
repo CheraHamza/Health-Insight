@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6 flex items-center justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-800">Daily Hospital Stats</h1>
+    <p class="text-sm text-gray-500 mt-1">Batch analytics output from Cassandra.</p>
+  </div>
+
+  <form method="get" action="{{ url_for('daily_stats_page') }}" class="flex items-center gap-2">
+    <label class="text-xs font-bold text-gray-400 uppercase">Date</label>
+    <input type="date" name="date" value="{{ stat_date.isoformat() }}" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-gray-800 focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 rounded-lg">
+      Load
+    </button>
+  </form>
+</div>
+
+<div class="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-emerald-500">
+  {% if not stats or stats|length == 0 %}
+  <div class="text-sm text-gray-500">
+    No daily stats found for
+    {{ stat_date.isoformat() }}.
+    <div class="mt-2 text-xs text-gray-400">
+      Run the batch job: <span class="font-mono">./venv/bin/python processing/batch_job.py --stat-date
+        {{ stat_date.isoformat() }}</span>
+    </div>
+  </div>
+  {% else %}
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs font-bold text-gray-400 uppercase border-b">
+          <th class="py-2 pr-4">Metric</th>
+          <th class="py-2 pr-4">Avg</th>
+          <th class="py-2 pr-4">Min</th>
+          <th class="py-2 pr-4">Max</th>
+          <th class="py-2 pr-4">Patients</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in stats %}
+        <tr class="border-b last:border-b-0">
+          <td class="py-2 pr-4 font-semibold text-gray-800 capitalize">
+            {{ r.metric_name|replace('_',' ') }}
+          </td>
+          <td class="py-2 pr-4 text-gray-700">
+            {{ '%.2f'|format(r.avg_value) if r.avg_value is not none else '' }}
+          </td>
+          <td class="py-2 pr-4 text-gray-700">
+            {{ '%.2f'|format(r.min_value) if r.min_value is not none else '' }}
+          </td>
+          <td class="py-2 pr-4 text-gray-700">
+            {{ '%.2f'|format(r.max_value) if r.max_value is not none else '' }}
+          </td>
+          <td class="py-2 pr-4 text-gray-700">
+            {{ r.patient_count }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

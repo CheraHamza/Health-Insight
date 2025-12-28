@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="mb-8">
+  <h1 class="text-3xl font-bold text-gray-800">Alerts</h1>
+</div>
+
+<div class="mb-8">
+  <div class="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-red-500">
+
+    <div class="flex items-center justify-between gap-4">
+      <h2 class="text-xl font-bold text-gray-800">
+        Active Alerts
+      </h2>
+      <div class="text-xs text-gray-500">
+        Updates every 10s
+      </div>
+    </div>
+
+    <div id="alerts-empty" class="mt-4 text-sm text-gray-500 {% if alerts and alerts|length > 0 %}hidden{% endif %}">
+      No active alerts in the last 30 minutes.
+    </div>
+
+    <div id="alerts-list" class="mt-4 space-y-2">
+      {% if alerts %}
+      {% for a in alerts[:5] %}
+      <div class="flex items-start justify-between gap-4 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+        <div>
+          <div class="text-sm font-semibold text-red-700">
+            {{ a.alert_type }} ·
+            {{ a.patient_id }}
+          </div>
+          <div class="text-xs text-gray-600 mt-0.5">
+            {{ a.metric_name|replace('_', ' ') }}:
+            {{ a.observed_value }}
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs font-mono text-gray-600">
+            {{ a.timestamp }}
+          </div>
+          <a href="{{ url_for('patient_detail', patient_id=a.patient_id) }}" class="text-xs text-emerald-700 hover:underline">
+            View patient
+          </a>
+        </div>
+      </div>
+      {% endfor %}
+      {% endif %}
+    </div>
+
+    <div class="mt-4 flex justify-end">
+      <a href="{{ url_for('alerts_page') }}" class="text-sm text-emerald-700 hover:underline">
+        View all alerts
+      </a>
+    </div>
+  </div>
+</div>
+
+
+<div class="mb-8">
+  <h1 class="text-3xl font-bold text-gray-800">Patients</h1>
+</div>
+
+
+
+<div id="patients-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  {% for patient in patients %}
+  <div data-patient-card="{{ patient.patient_id }}" data-risk-score="{{ patient.risk_score|default(0) }}" class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300 border border-gray-100">
+    <div class="p-6">
+      <div class="flex justify-between items-start mb-4">
+        <div>
+          <h2 class="text-xl font-bold text-gray-900">
+            {{ patient.name }}
+          </h2>
+          <span class="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-500">
+            {{ patient.patient_id }}</span>
+        </div>
+        <div class="text-right">
+          <span data-risk-for="{{ patient.patient_id }}" class="block text-sm font-semibold {% if patient.risk_score > 0.5 %}text-red-500{% else %}text-green-500{% endif %}">
+            Risk: <span data-risk-pct>
+              {{ (patient.risk_score * 100)|int }}%</span>
+          </span>
+        </div>
+      </div>
+      <p class="text-sm text-gray-600 line-clamp-2 mb-4 italic">"
+        {{ patient.medical_notes }}"
+      </p>
+      <a href="{{ url_for('patient_detail', patient_id=patient.patient_id) }}" class="block w-full text-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold py-2 rounded-lg transition-colors">
+        View Vitals <i class="fas fa-chevron-right ml-1 text-xs"></i>
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+  function animateReorder(container, orderedCards) {
+    // FLIP: First
+    const first = new Map();
+    orderedCards.forEach(el => first.set(el, el.getBoundingClientRect()));
+
+    // DOM reorder: Last
+    const frag = document.createDocumentFragment();
+    orderedCards.forEach(el => frag.appendChild(el));
+    container.appendChild(frag);
+
+    // Invert + Play
+    const last = new Map();
+    orderedCards.forEach(el => last.set(el, el.getBoundingClientRect()));
+
+    orderedCards.forEach(el => {
+      const f = first.get(el);
+      const l = last.get(el);
+      if (!f || !l) return;
+      const dx = f.left - l.left;
+      const dy = f.top - l.top;
+      if (dx === 0 && dy === 0) return;
+
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      el.style.transition = 'transform 0s';
+    });
+
+    requestAnimationFrame(() => {
+      orderedCards.forEach(el => {
+        if (!el.style.transform) return;
+        el.style.transition = 'transform 700ms ease';
+        el.style.transform = '';
+      });
+
+      // Cleanup after animation.
+      window.setTimeout(() => {
+        orderedCards.forEach(el => {
+          el.style.transition = '';
+          el.style.transform = '';
+        });
+      }, 750);
+    });
+  }
+
+  function sortPatientCardsByRisk(container) {
+    const cards = Array.from(container.querySelectorAll('[data-patient-card]'));
+    cards.sort((a, b) => {
+      const ra = Number(a.dataset.riskScore || 0);
+      const rb = Number(b.dataset.riskScore || 0);
+      if (rb !== ra) return rb - ra;
+      // Tie-breaker: stable by patient id
+      return String(a.dataset.patientCard || '').localeCompare(String(b.dataset.patientCard || ''));
+    });
+    animateReorder(container, cards);
+  }
+
+  async function refreshRiskScores() {
+    try {
+      const res = await fetch('/api/patients/risks', {
+        cache: 'no-store'
+      });
+      if (!res.ok) return;
+      const rows = await res.json();
+      if (!Array.isArray(rows)) return;
+
+      const grid = document.getElementById('patients-grid');
+      const riskEls = Array.from(document.querySelectorAll('[data-risk-for]'));
+      const riskByPatient = new Map(riskEls.map(el => [el.getAttribute('data-risk-for'), el]));
+
+      rows.forEach(r => {
+        const pid = r.patient_id;
+        if (!pid) return;
+        const score = Number(r.risk_score);
+        if (!Number.isFinite(score)) return;
+
+        const el = riskByPatient.get(pid);
+        if (!el) return;
+        const pctEl = el.querySelector('[data-risk-pct]');
+        if (pctEl) pctEl.textContent = Math.round(score * 100) + '%';
+
+        el.classList.remove('text-red-500', 'text-green-500');
+        el.classList.add(score > 0.5 ? 'text-red-500' : 'text-green-500');
+
+        if (grid) {
+          const card = grid.querySelector(`[data-patient-card="${pid}"]`);
+          if (card) card.dataset.riskScore = String(score);
+        }
+      });
+
+      if (grid) {
+        sortPatientCardsByRisk(grid);
+      }
+    } catch (e) {
+      // ignore transient errors
+    }
+  }
+
+  async function refreshAlerts() {
+    try {
+      const res = await fetch('/api/alerts/recent?limit=5&since_minutes=30', {
+        cache: 'no-store'
+      });
+      if (!res.ok) return;
+      const alerts = await res.json();
+
+      const list = document.getElementById('alerts-list');
+      const empty = document.getElementById('alerts-empty');
+
+      if (!Array.isArray(alerts) || alerts.length === 0) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      empty.classList.add('hidden');
+      list.innerHTML = alerts.slice(0, 5).map(a => {
+        const patientId = a.patient_id || '';
+        const alertType = a.alert_type || 'ALERT';
+        const metricName = (a.metric_name || '').replaceAll('_', ' ');
+        const observed = (a.observed_value ?? '');
+        const ts = a.timestamp || '';
+        const patientUrl = '/patient/' + encodeURIComponent(patientId);
+
+        return (
+          '<div class="flex items-start justify-between gap-4 bg-red-50 border border-red-100 rounded-xl px-4 py-3">' +
+          '<div>' +
+          '<div class="text-sm font-semibold text-red-700">' +
+          alertType + ' · ' + patientId +
+          '</div>' +
+          '<div class="text-xs text-gray-600 mt-0.5">' +
+          metricName + ': ' + observed +
+          '</div>' +
+          '</div>' +
+          '<div class="text-right">' +
+          '<div class="text-xs font-mono text-gray-600">' + ts + '</div>' +
+          '<a href="' + patientUrl + '" class="text-xs text-emerald-700 hover:underline">View patient</a>' +
+          '</div>' +
+          '</div>'
+        );
+      }).join('');
+    } catch (e) {
+      // ignore transient errors
+    }
+  }
+
+  refreshAlerts();
+  setInterval(refreshAlerts, 10000);
+
+  refreshRiskScores();
+  setInterval(refreshRiskScores, 10000);
+</script>
+{% endblock %}

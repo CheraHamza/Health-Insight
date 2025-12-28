@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-6">
+  <a href="/" class="text-emerald-600 hover:underline"><i class="fas fa-arrow-left mr-1"></i> Back to Ward</a>
+</div>
+
+<div class="flex flex-col lg:flex-row gap-8">
+  <!-- Left Column: Patient Profile (MongoDB) -->
+  <div class="lg:w-1/3">
+    <div class="bg-white rounded-2xl shadow-lg p-6 sticky top-6 border-t-4 border-emerald-500">
+      <div class="flex items-start justify-between gap-4 mb-4">
+        <h2 class="text-2xl font-bold">
+          {{ profile.name }}
+        </h2>
+        <a href="{{ url_for('edit_patient', patient_id=profile.patient_id) }}" class="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-full text-gray-700 transition-colors whitespace-nowrap">
+          <i class="fas fa-pen mr-1"></i> Edit Profile
+        </a>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="text-xs font-bold text-gray-400 uppercase">Medical History</label>
+          <p class="text-gray-700 mt-1">
+            {{ profile.medical_notes }}
+          </p>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-gray-400 uppercase">Contact Information</label>
+          <p class="text-gray-700 mt-1"><i class="fas fa-envelope mr-2 text-gray-400"></i>
+            {{ profile.contact_info.email }}
+          </p>
+          <p class="text-gray-700 mt-1"><i class="fas fa-phone mr-2 text-gray-400"></i>
+            {{ profile.contact_info.phone }}
+          </p>
+        </div>
+        <div class="pt-4 border-t border-gray-100">
+          <label class="text-xs font-bold text-gray-400 uppercase">System Status</label>
+          <div class="flex items-center mt-2">
+            <span class="h-3 w-3 bg-green-500 rounded-full mr-2"></span>
+            <span class="text-sm text-gray-600">Connected to Streaming Node</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Latest Vitals (Cassandra) -->
+  <div class="lg:w-2/3">
+    <div class="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-green-500">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-xl font-bold text-gray-800">Live Stream Data</h3>
+        <div class="text-xs text-gray-500">Updates every 10s</div>
+      </div>
+
+      {% if vitals %}
+      {% set normal_ranges = {
+        'heart_rate': {'min': 60, 'max': 100, 'desc': 'Heart rate'},
+        'bp_systolic': {'min': 110, 'max': 130, 'desc': 'Systolic blood pressure'},
+        'bp_diastolic': {'min': 70, 'max': 85, 'desc': 'Diastolic blood pressure'},
+        'spo2': {'min': 95, 'max': 100, 'desc': 'Oxygen level'},
+        'temperature': {'min': 36.5, 'max': 37.5, 'desc': 'Body temperature'},
+        'respiratory_rate': {'min': 12, 'max': 18, 'desc': 'Breathing rate'}
+      } %}
+
+      <div id="vitals-area" class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {% for metric, items in vitals|groupby('metric_name') %}
+        {% set first = items[0] %}
+        {% set range = normal_ranges.get(metric, {'min': None, 'max': None, 'desc': 'Metric'}) %}
+        {% set latest = items[0] %}
+        {% set latest_val = latest.value|float %}
+        {% set latest_status = 'normal' %}
+        {% if range.min is not none and latest_val < range.min %}
+        {% set latest_status = 'low' %}
+        {% elif range.max is not none and latest_val > range.max %}
+        {% set latest_status = 'high' %}
+        {% endif %}
+        {% set latest_color = 'text-emerald-700' %}
+        {% if latest_status == 'low' %}
+        {% set latest_color = 'text-orange-500' %}
+        {% elif latest_status == 'high' %}
+        {% set latest_color = 'text-red-600' %}
+        {% endif %}
+
+        <a href="{{ url_for('patient_metric', patient_id=profile.patient_id, metric_name=metric) }}" class="block bg-emerald-50 border border-emerald-100 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              {% if metric == 'heart_rate' %}<i class="fas fa-heart text-red-400"></i>{% elif metric == 'spo2' %}<i class="fas fa-lungs text-emerald-500"></i>{% else %}<i class="fas fa-thermometer-half text-orange-400"></i>{% endif %}
+              <div>
+                <div class="text-base font-bold text-emerald-800 capitalize">
+                  {{ metric|replace('_', ' ') }}
+                </div>
+                <p class="text-xs text-gray-600 mt-0.5">
+                  {{ range.desc }} · tap for history
+                </p>
+              </div>
+            </div>
+            <div class="text-right text-xs text-gray-500">
+              <div class="font-semibold text-emerald-700">
+                {{ first.unit }}
+              </div>
+              {% if range.min is not none and range.max is not none %}
+              <div>Normal:
+                {{ range.min }} -
+                {{ range.max }}
+              </div>
+              {% elif range.min is not none %}
+              <div>Normal: ≥
+                {{ range.min }}
+              </div>
+              {% elif range.max is not none %}
+              <div>Normal: ≤
+                {{ range.max }}
+              </div>
+              {% else %}
+              <div>Normal range not set</div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            {% for v in items[:3] %}
+            {% set val = v.value|float %}
+            {% set status = 'normal' %}
+            {% if range.min is not none and val < range.min %}
+            {% set status = 'low' %}
+            {% elif range.max is not none and val > range.max %}
+            {% set status = 'high' %}
+            {% endif %}
+            {% set color = 'text-emerald-700' %}
+            {% if status == 'low' %}
+            {% set color = 'text-orange-500' %}
+            {% elif status == 'high' %}
+            {% set color = 'text-red-600' %}
+            {% endif %}
+
+            <div class="bg-white/80 rounded-lg px-3 py-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-baseline gap-2">
+                  <span class="text-sm font-semibold {{ color }}">
+                    {{ v.value }}</span>
+                  <span class="text-xs text-gray-500">
+                    {{ v.unit }}</span>
+                </div>
+                <span class="text-xs text-gray-500">
+                  {{ v.timestamp }}</span>
+              </div>
+              {% if status != 'normal' %}
+              <div class="mt-1 text-xs {% if status == 'high' %}text-red-600{% else %}text-orange-600{% endif %} flex items-center gap-1">
+                <i class="fas fa-exclamation-triangle"></i>
+                {% if status == 'low' %}Below{% else %}Above{% endif %} normal range
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div id="vitals-area" class="text-center py-20 text-gray-400">
+        <i class="fas fa-satellite-dish text-4xl mb-4"></i>
+        <p>No streaming data received for this patient yet.</p>
+        <p class="text-xs mt-2">Is the Spark Streaming job running?</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const patientId = "{{ profile.patient_id }}";
+    const normalRanges = {
+      heart_rate: {
+        min: 60,
+        max: 100,
+        desc: 'Heart rate'
+      },
+      bp_systolic: {
+        min: 110,
+        max: 130,
+        desc: 'Systolic blood pressure'
+      },
+      bp_diastolic: {
+        min: 70,
+        max: 85,
+        desc: 'Diastolic blood pressure'
+      },
+      spo2: {
+        min: 95,
+        max: 100,
+        desc: 'Oxygen level'
+      },
+      temperature: {
+        min: 36.5,
+        max: 37.5,
+        desc: 'Body temperature'
+      },
+      respiratory_rate: {
+        min: 12,
+        max: 18,
+        desc: 'Breathing rate'
+      }
+    };
+
+    function iconForMetric(metric) {
+      if (metric === 'heart_rate') return '<i class="fas fa-heart text-red-400"></i>';
+      if (metric === 'spo2') return '<i class="fas fa-lungs text-emerald-500"></i>';
+      return '<i class="fas fa-thermometer-half text-orange-400"></i>';
+    }
+
+    function statusFor(metric, value) {
+      const r = normalRanges[metric];
+      if (!r) return 'normal';
+      if (r.min != null && value < r.min) return 'low';
+      if (r.max != null && value > r.max) return 'high';
+      return 'normal';
+    }
+
+    function colorFor(status) {
+      if (status === 'low') return 'text-orange-500';
+      if (status === 'high') return 'text-red-600';
+      return 'text-emerald-700';
+    }
+
+    function renderEmpty(area) {
+      area.className = 'text-center py-20 text-gray-400';
+      area.innerHTML =
+        '<i class="fas fa-satellite-dish text-4xl mb-4"></i>' +
+        '<p>No streaming data received for this patient yet.</p>' +
+        '<p class="text-xs mt-2">Is the Spark Streaming job running?</p>';
+    }
+
+    function renderGrid(area, grouped) {
+      area.className = 'grid grid-cols-1 lg:grid-cols-2 gap-5';
+      const metrics = Object.keys(grouped).sort();
+      area.innerHTML = metrics.map(metric => {
+        const items = grouped[metric] || [];
+        if (items.length === 0) return '';
+
+        const r = normalRanges[metric] || {
+          min: null,
+          max: null,
+          desc: 'Metric'
+        };
+        const first = items[0];
+        const unit = first.unit || '';
+
+        const lines = items.slice(0, 3).map(v => {
+          const valNum = Number(v.value);
+          const status = statusFor(metric, valNum);
+          const color = colorFor(status);
+          const warn = status === 'normal' ? '' : (
+            '<div class="mt-1 text-xs ' + (status === 'high' ? 'text-red-600' : 'text-orange-600') + ' flex items-center gap-1">' +
+            '<i class="fas fa-exclamation-triangle"></i>' +
+            (status === 'low' ? 'Below' : 'Above') + ' normal range' +
+            '</div>'
+          );
+
+          return (
+            '<div class="bg-white/80 rounded-lg px-3 py-2">' +
+            '<div class="flex items-center justify-between">' +
+            '<div class="flex items-baseline gap-2">' +
+            '<span class="text-sm font-semibold ' + color + '">' + v.value + '</span>' +
+            '<span class="text-xs text-gray-500">' + (v.unit || '') + '</span>' +
+            '</div>' +
+            '<span class="text-xs text-gray-500">' + (v.timestamp || '') + '</span>' +
+            '</div>' +
+            warn +
+            '</div>'
+          );
+        }).join('');
+
+        let normalText = 'Normal range not set';
+        if (r.min != null && r.max != null) normalText = `Normal: ${r.min} - ${r.max}`;
+        else if (r.min != null) normalText = `Normal: ≥ ${r.min}`;
+        else if (r.max != null) normalText = `Normal: ≤ ${r.max}`;
+
+        const metricUrl = `/patient/${encodeURIComponent(patientId)}/metric/${encodeURIComponent(metric)}`;
+        return (
+          '<a href="' + metricUrl + '" class="block bg-emerald-50 border border-emerald-100 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow">' +
+          '<div class="flex items-center justify-between mb-3">' +
+          '<div class="flex items-center gap-3">' +
+          iconForMetric(metric) +
+          '<div>' +
+          '<div class="text-base font-bold text-emerald-800 capitalize">' + metric.replaceAll('_', ' ') + '</div>' +
+          '<p class="text-xs text-gray-600 mt-0.5">' + (r.desc || 'Metric') + ' · tap for history</p>' +
+          '</div>' +
+          '</div>' +
+          '<div class="text-right text-xs text-gray-500">' +
+          '<div class="font-semibold text-emerald-700">' + unit + '</div>' +
+          '<div>' + normalText + '</div>' +
+          '</div>' +
+          '</div>' +
+          '<div class="space-y-2">' + lines + '</div>' +
+          '</a>'
+        );
+      }).join('');
+    }
+
+    async function refreshVitals() {
+      try {
+        const res = await fetch(`/api/patient/${encodeURIComponent(patientId)}/vitals?limit=200`, {
+          cache: 'no-store'
+        });
+        if (!res.ok) return;
+        const rows = await res.json();
+        const area = document.getElementById('vitals-area');
+        if (!area) return;
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+          renderEmpty(area);
+          return;
+        }
+
+        // group by metric_name (rows are newest-first)
+        const grouped = {};
+        rows.forEach(r => {
+          const m = r.metric_name;
+          if (!m) return;
+          if (!grouped[m]) grouped[m] = [];
+          grouped[m].push(r);
+        });
+        renderGrid(area, grouped);
+      } catch (e) {
+        // ignore transient errors
+      }
+    }
+
+    refreshVitals();
+    setInterval(refreshVitals, 10000);
+  });
+</script>
+{% endblock %}
